@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+# Usage: python predict_age_ML.py 
+
 import os
 import sys
 import json
@@ -29,7 +31,7 @@ from xgboost import XGBRegressor
 sys.path.append(os.path.join(os.getcwd(), "..", "src"))
 from data_preparing import DataManager
 from feature_engineering import FeatureReducer, FeatureSelector, BorutaSelector
-from utils import ST_features
+from utils import ST_features, platform_features
 
 ## Classes: ===========================================================================
 
@@ -71,6 +73,9 @@ class Constants:
                 "65-69": (65, 69), 
                 "70-74": (70, 74), 
                 "ge-75": (75, np.inf)
+            }, 
+            "elderly": {
+                "ge-60": (60, np.inf)
             }
         }
 
@@ -89,6 +94,14 @@ class Constants:
             for x, (f1, f2, f3) in enumerate(st_features_to_drop):
                 self.domain_approach_mapping[f"ST-{x+1}"] = {
                     "domains": [ f for f in st_features if f not in (f1, f2, f3) ], 
+                    "approaches": [""]
+                }
+        elif args.platform_features:
+            pf = platform_features()
+            self.domain_approach_mapping = {}
+            for domain in ["MOTOR", "MEMORY", "LANGUAGE"]:
+                self.domain_approach_mapping[domain] = {
+                    "domains": [ f for f in pf if f.startswith(domain) ],
                     "approaches": [""]
                 }
         else:
@@ -176,10 +189,10 @@ class Config:
     def _setup_vars(self, args, constants):
         self.seed = args.seed if args.seed is not None else np.random.randint(0, 10000)
         self.by_gender = [False, True][args.by_gender]
-        self.age_method = ["no-cut", "cut-40-41", "cut-44-45", "cut-8-wais"][args.age_method]
+        self.age_method = ["no-cut", "cut-40-41", "cut-44-45", "cut-8-wais", "elderly"][args.age_method]
         self.age_bin_labels = list(constants.age_groups[self.age_method].keys())
         self.age_boundaries = list(constants.age_groups[self.age_method].values())
-        self.age_correction_method = ["Zhang et al. (2023)", "Beheshti et al. (2019)"][args.age_correction_method]
+        self.age_correction_method = ["Zhang et al. (2023)", "Beheshti et al. (2019)", None][args.age_correction_method]
         self.age_correction_groups = ["cut-8-wais", "every-5-yrs"][0]
         self.pad_age_groups = list(constants.age_groups[self.age_correction_groups].keys())
         self.pad_age_breaks = [ 0 ] + [ x for _, x in list(constants.age_groups[self.age_correction_groups].values()) ] 
@@ -311,26 +324,30 @@ def initialization():
         
         ## Separate data into groups:
         parser.add_argument("-age", "--age_method", type=int, default=2, 
-                            help="The method to define age groups (0: 'no-cut', 1: 'cut-40-41', 2: 'cut-44-45', 3: 'cut-8-wais').")
+                            help="The method to define age groups (0: 'no-cut', 1: 'cut-40-41', 2: 'cut-44-45', 3: 'cut-8-wais', 4: 'eldery').")
         parser.add_argument("-sex", "--by_gender", type=int, default=0, 
                             help="Whether to separate the data by gender (0: False, 1: True).")
         
         ## Split data into training and testing sets:
         parser.add_argument("-sid", "--split_with_ids", type=str, # default=None, 
                             default=os.path.join(os.getcwd(), "..", "outputs", "train_and_test_ids.json"), 
-                            help="File path of a dictionary (.json) containing two lists of IDs to be used for splitting the data into training and testing sets. "+
-                            "If provided, the testset_ratio will be determined by its length.")
+                            help="File path of a dictionary (.json) containing two lists of IDs to be used for splitting the data into training and testing sets. " +
+                                 "If provided, the testset_ratio will be determined by its length.")
         parser.add_argument("-tsr", "--testset_ratio", type=float, default=None, 
-                            help="The ratio of the testing set. "+
-                            "If provided, the split_with_ids will be ignored.")
+                            help="The ratio of the testing set. " +
+                                 "If provided, the split_with_ids will be ignored.")
         
-        ## Feature engineering:
+        ## Feature groups to be included:
         parser.add_argument("-nam", "--no_all_mappings", action="store_true", default=False, 
                             help="Not to include 'All' domain-approach mappings for feature selection.")
         parser.add_argument("-oam", "--only_all_mapping", action="store_true", default=False, 
                             help="Include only 'All' domain-approach mappings for feature selection.")
         parser.add_argument("-st", "--standardize_tests", action="store_true", default=False, 
                             help="Use only the standardized test scores as features.")
+        parser.add_argument("-pf", "--platform_features", action="store_true", default=False, 
+                            help="Use platform features as features.")
+        
+        ## Feature engineering:
         parser.add_argument("--apply_pca", action="store_true", default=False, 
                             help="Apply PCA for feature reduction.")
         parser.add_argument("-rhcf", "--remove_highly_correlated_features", action="store_true", default=False, 
@@ -354,7 +371,7 @@ def initialization():
 
         ## Age correction:
         parser.add_argument("-acm", "--age_correction_method", type=int, default=0, 
-                            help="The method to correct age (0: 'Zhang et al. (2023)', 1: 'Beheshti et al. (2019)').")
+                            help="The method to correct age (0: 'Zhang et al. (2023)', 1: 'Beheshti et al. (2019)', 2: None).")
         
         return parser.parse_args()
 
@@ -449,15 +466,18 @@ def initialization():
 
     return args, constants, config, logger
 
-def filter_features_preliminary(DF, domains, approaches, ori_name): 
+def filter_features_preliminary(DF, domains, approaches, ori_name, args): 
     '''
     Filter features by domain and approach, according to data collection orientations.
     '''
-    included_features = [ col for col in DF.columns if any( d in col for d in domains ) and any( a in col for a in approaches ) ]
+    if args.standardize_tests or args.platform_features:
+        included_features = [ col for col in DF.columns if any( d == col for d in domains ) ]
+    else:
+        included_features = [ col for col in DF.columns if any( d in col for d in domains ) and any( a in col for a in approaches ) ]
     
     if ori_name == "FUNCTIONAL": # exclude "STRUCTURE" features
         included_features = [ col for col in included_features if "STRUCTURE" not in col ]
-    elif ori_name == None:
+    elif ori_name == None: 
         included_features = ["ID", "BASIC_INFO_AGE", "BASIC_INFO_SEX"] + included_features
 
     return DF.loc[:, included_features]
@@ -509,11 +529,22 @@ def prepare_dataset(args, constants, config, logger):
         sys.exit(0)
 
     logger.info("Preliminary feature filtering based on domains and approaches ...")
+    all_domains = [ 
+        d
+        for d_dict in constants.domain_approach_mapping.values()
+        for d in d_dict["domains"] # which is a list
+    ]
+    all_approaches = [
+        a
+        for a_dict in constants.domain_approach_mapping.values()
+        for a in a_dict["approaches"]
+    ]
     DF_prepared = filter_features_preliminary(
         DF_prepared, 
-        domains=["STRUCTURE", "MOTOR", "MEMORY", "LANGUAGE"], 
-        approaches=["MRI", "BEH", "EEG"], # , "ST"
-        ori_name=None
+        domains=all_domains,  
+        approaches=all_approaches, 
+        ori_name=None, 
+        args=args
     )
 
     return DF_prepared
@@ -1136,7 +1167,8 @@ def main():
                 data_dict["X_train"], 
                 domains=ori_content["domains"], 
                 approaches=ori_content["approaches"], 
-                ori_name=ori_name
+                ori_name=ori_name, 
+                args=args
             )
 
             if X_train_included.empty: 
@@ -1192,14 +1224,14 @@ def main():
             y_pred_train = pd.Series(y_pred_train, index=data_dict["y_train"].index)
             pad_train = y_pred_train - data_dict["y_train"]
 
-            if args.age_correction_method in [0, 1]:
+            if config.age_correction_method:
                 logger.info("Applying age-correction to the training set ...")
                 corrected_y_pred_train, padac_train, correction_ref = perform_age_correction(
                     "train", data_dict["y_train"], y_pred_train, pad_train, config
                 )
-            else:
+            else: 
                 logger.info("No age-correction is applied ...")
-                corrected_y_pred_train, padac_train, correction_ref = None, None, None
+                corrected_y_pred_train, padac_train, correction_ref = [], [], {}
             
             if data_dict["X_test"].empty: 
                 logger.info("No testing set ...")
@@ -1245,7 +1277,7 @@ def main():
                     )
                 else:
                     logger.info("Again, no age-correction is applied ...")
-                    corrected_y_pred_test, padac = None, None
+                    corrected_y_pred_test, padac = [], []
 
                 save_results = {
                     "Model": best_model_name, 
