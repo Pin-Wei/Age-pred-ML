@@ -230,7 +230,9 @@ def plot_pad_bars(DF, x_lab, one_or_many, color_dict, output_path,
         kwargs = {"legend": False}
         y_name = ""
     else:
-        kwargs = {"col": z_lab, "col_order": list(DF[z_lab].unique()).sort(key=lambda x: ["STR", "BEH", "FUN", "ST", "ALL"].index(x))}
+        kwargs = {"col": z_lab}
+        if all( any( z == k for k in ["STR", "BEH", "FUN", "ALL"] ) for z in DF[z_lab].unique()):
+            kwargs["col_order"] = list(DF[z_lab].unique()).sort(key=lambda x: ["STR", "BEH", "FUN", "ALL"].index(x))
         y_name = "PAD Value"
 
     if (not os.path.exists(output_path)) or overwrite:

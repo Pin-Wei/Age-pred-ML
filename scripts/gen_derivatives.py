@@ -267,7 +267,8 @@ def load_model_results(config, desc, const, output_path, overwrite=False):
     '''
     def _process_results(results, cols, label, ori_name, sep_sex=desc.sep_sex):
         processed_results = pd.DataFrame({ 
-            k: v for k, v in results.items() if k in cols
+            k: v for k, v in results.items() 
+            if k in cols and v is not None
         })
         if any(char.isdigit() for char in ori_name):
             processed_results.insert(0, "Type", ori_name)
@@ -275,10 +276,14 @@ def load_model_results(config, desc, const, output_path, overwrite=False):
             processed_results.insert(0, "Type", ori_name[:3])
         if sep_sex:
             age_group, sex = label
-            processed_results.insert(2, "AgeGroup", {"all": "", "le-44": "Y", "ge-45": "O"}[age_group])
+            if age_group in ["all", "le-44", "ge-45"]:
+                age_group = {"all": "", "le-44": "Y", "ge-45": "O"}[age_group]
+            processed_results.insert(2, "AgeGroup", age_group)
             processed_results.insert(2, "Sex", sex)
         else:
-            processed_results.insert(2, "AgeGroup", {"all": "all", "le-44": "Y", "ge-45": "O"}[label]) 
+            if label in ["all", "le-44", "ge-45"]:
+                label = {"all": "", "le-44": "Y", "ge-45": "O"}[label]
+            processed_results.insert(2, "AgeGroup", label) 
 
         return processed_results
 
@@ -757,7 +762,7 @@ def main():
             one_or_many="one", 
             color_dict = color_dicts.pad_bars, 
             output_path=config.pad_barplot_outpath.format(fname_add + f" ({ori_name})"), 
-            y_max=const.pad_bar_y_lims[ori_name],
+            y_max=const.pad_bar_y_lims[ori_name] if ori_name in const.pad_bar_y_lims.keys() else None,
             overwrite=args.overwrite
         )
 
@@ -822,23 +827,27 @@ def main():
     )
 
     ## Plot correlations with statistics:
-    for group_name, sub_DF in grouped_result_DF.items():
-        sub_corr_df = corr_DF[corr_DF[desc.grouping_col] == group_name]
+    try:
+        for group_name, sub_DF in grouped_result_DF.items():
+            sub_corr_df = corr_DF[corr_DF[desc.grouping_col] == group_name]
 
-        for t1, t2 in [("BEH", "FUN"), ("BEH", "STR"), ("FUN", "STR")]:            
-            corr_table = sub_corr_df.query("X == @t1 & Y == @t2")
-            if corr_table.empty:
-                corr_table = sub_corr_df.query("X == @t2 & Y == @t1")
+            for t1, t2 in [("BEH", "FUN"), ("BEH", "STR"), ("FUN", "STR")]:            
+                corr_table = sub_corr_df.query("X == @t1 & Y == @t2")
+                if corr_table.empty:
+                    corr_table = sub_corr_df.query("X == @t2 & Y == @t1")
 
-            plot_corr_with_stats(
-                DF=sub_DF, 
-                corr_table=corr_table, 
-                x_lab=t1, 
-                y_lab=t2, 
-                p_apply="p-corr" if args.p_adjust else "p-unc", 
-                output_path=config.pad_scatter_outpath.format(pad_type, group_name, t1, t2), 
-                overwrite=args.overwrite
-            )
+                plot_corr_with_stats(
+                    DF=sub_DF, 
+                    corr_table=corr_table, 
+                    x_lab=t1, 
+                    y_lab=t2, 
+                    p_apply="p-corr" if args.p_adjust else "p-unc", 
+                    output_path=config.pad_scatter_outpath.format(pad_type, group_name, t1, t2), 
+                    overwrite=args.overwrite
+                )
+
+    except Exception as e:
+        print(f"\nError in plot_corr_with_stats: {e}")
 
 ## Finally: ---------------------------------------------------------------------------
 

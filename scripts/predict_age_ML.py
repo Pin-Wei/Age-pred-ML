@@ -99,7 +99,7 @@ class Constants:
         elif args.platform_features:
             pf = platform_features()
             self.domain_approach_mapping = {}
-            for domain in ["MOTOR", "MEMORY", "LANGUAGE"]:
+            for domain in ["MOTOR"]: # ["MOTOR", "MEMORY", "LANGUAGE"]
                 self.domain_approach_mapping[domain] = {
                     "domains": [ f for f in pf if f.startswith(domain) ],
                     "approaches": [""]
@@ -235,8 +235,11 @@ class Config:
         prefix = datetime.today().strftime('%Y-%m-%d')
 
         if args.use_prepared_data:
-            balancing_method = os.path.basename(os.path.dirname(args.use_prepared_data)).split("_")[0]
-            prefix += f"_{balancing_method.lower()}"
+            file_dir, file_name = os.path.split(args.use_prepared_data)
+            preceding_dir, _ = os.path.split(file_dir)
+            if preceding_dir == self.syndata_folder:
+                balancing_method = file_name.split("_")[0]
+                prefix += f"_{balancing_method.lower()}"
         elif self.balancing_method is not None:
             prefix += f"_{self.balancing_method.lower()}"
         else:
@@ -492,6 +495,11 @@ def prepare_dataset(args, constants, config, logger):
     if args.use_prepared_data is not None: 
         logger.info("Loading the prepared dataset ...")
         DF_prepared = pd.read_csv(args.use_prepared_data)
+
+        if "Age" in DF_prepared.columns:
+            DF_prepared.rename(columns={"Age": "BASIC_INFO_AGE"}, inplace=True)
+        if "BASIC_INFO_SEX" not in DF_prepared.columns:
+            DF_prepared["BASIC_INFO_SEX"] = np.nan
         
     else:
         logger.info("Loading and processing the raw dataset ...")

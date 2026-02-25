@@ -74,7 +74,8 @@ def load_result_df(custom_bar_x_lab):
 
     return desc, result_DF
 
-def compare_approachs(result_DF, feature_orientations, version_list):
+def compare_approachs(result_DF, feature_orientations, version_list, args=None):
+    different_participants = getattr(args, "different_participants", False)
     stats_DF_list = []
 
     for pad_type in ["PAD", "PADAC"]:
@@ -88,7 +89,7 @@ def compare_approachs(result_DF, feature_orientations, version_list):
                         V2_abs=result_DF.query(
                             f"Type == '{ori_name}' & BarGroup == '{group}' & Version == '{ver_2}'"
                         )[f"{pad_type}_abs"], 
-                        independent=True if args.different_participants else False
+                        independent=True if different_participants else False
                     )
                     stats_results.insert(0, "Type", ori_name)
                     stats_results.insert(1, "Group", group)
@@ -99,7 +100,8 @@ def compare_approachs(result_DF, feature_orientations, version_list):
         
     return pd.concat(stats_DF_list, ignore_index=True)
 
-def compare_modalities(result_DF, feature_orientations, version_list):
+def compare_modalities(result_DF, feature_orientations, version_list, args=None):
+    different_participants = getattr(args, "different_participants", False)
     stats_DF_list = []
 
     for version in version_list:
@@ -113,7 +115,7 @@ def compare_modalities(result_DF, feature_orientations, version_list):
                         V2_abs=result_DF.query(
                             f"Version == '{version}' & BarGroup == '{group}' & Type == '{ori_2}'"
                         )[f"{pad_type}_abs"], 
-                        independent=True if args.different_participants else False
+                        independent=True if different_participants else False
                     )
                     stats_results.insert(0, "Version", version)
                     stats_results.insert(1, "Group", group)
@@ -204,14 +206,14 @@ if __name__ == "__main__":
                         DF=pd.concat([df1, df2], axis=0), 
                         y_lab="PredictedAge", 
                         color_hue="pad_type", 
-                        color_dict={"Raw": "#00BFFF", "AC":  "#FF1493"}, 
+                        color_dict={"Raw": "#00BFFF", "AC": "#FF1493"}, 
                         output_path= os.path.join(out_path, f"scatter_real_pred_age_{version}_{ori_name}.png"),
                         overwrite=args.overwrite
                     )
 
             ## Bar plots:
             ## Test if an age-stratified approach improves prediction accuracy:
-            stats_versions_DF = compare_approachs(result_DF, feature_orientations, version_list)
+            stats_versions_DF = compare_approachs(result_DF, feature_orientations, version_list, args=args)
             stats_versions_DF.to_csv(os.path.join(out_path, "compare_versions_stats.csv"), index=False)
 
             for pad_type in ["PAD", "PADAC"]:
@@ -228,7 +230,7 @@ if __name__ == "__main__":
             # plot_comparison_bars( ... , fig_type="version_both_pads")
 
             ## Compare models trained using features in specific modalities:
-            stats_modalities_DF = compare_modalities(result_DF, feature_orientations, version_list)
+            stats_modalities_DF = compare_modalities(result_DF, feature_orientations, version_list, args=args)
             stats_modalities_DF.to_csv(os.path.join(out_path, "compare_modalities_stats.csv"), index=False)
             
             melted_result_DF["VerxGroup"] = melted_result_DF["Version"] + "_" + melted_result_DF["BarGroup"].astype(str)
