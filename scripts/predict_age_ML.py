@@ -31,7 +31,7 @@ from xgboost import XGBRegressor
 sys.path.append(os.path.join(os.getcwd(), "..", "src"))
 from data_preparing import DataManager
 from feature_engineering import FeatureReducer, FeatureSelector, BorutaSelector
-from utils import ST_features, platform_features
+from utils import ST_features, Platform_features
 
 ## Classes: ===========================================================================
 
@@ -97,7 +97,7 @@ class Constants:
                     "approaches": [""]
                 }
         elif args.platform_features:
-            pf = platform_features()
+            pf = Platform_features()
             self.domain_approach_mapping = {}
             for domain in ["MOTOR"]: # ["MOTOR", "MEMORY", "LANGUAGE"]
                 self.domain_approach_mapping[domain] = {

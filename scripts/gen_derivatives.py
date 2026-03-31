@@ -282,7 +282,7 @@ def load_model_results(config, desc, const, output_path, overwrite=False):
             processed_results.insert(2, "Sex", sex)
         else:
             if label in ["all", "le-44", "ge-45"]:
-                label = {"all": "", "le-44": "Y", "ge-45": "O"}[label]
+                label = {"le-44": "Y", "ge-45": "O"}.get(label, label)
             processed_results.insert(2, "AgeGroup", label) 
 
         return processed_results
@@ -788,31 +788,31 @@ def main():
         plot_cormat(
             DF=sub_result_df, 
             targ_cols=sorted(desc.feature_oris), 
-            yr=90, 
+            # yr=90, 
+            annot_fs=16, 
+            figsize=(4, 3), # figsize=(3, 3) if len(desc.feature_orientations) <= 3 else (4, 4),
             output_path=config.pad_cormat_outpath.format(pad_type, group_name, suffix), 
-            figsize=(3, 3) if len(desc.feature_orientations) <= 3 else (4, 4),
             overwrite=args.overwrite
         )
 
-        ## Correlations between PAD values and standardized test features: 
-        plot_cormat(
-            DF=sub_result_df, 
-            targ_cols=st_features, 
-            corrwith_cols=sorted(desc.feature_oris), 
-            output_path=config.pad_cormat_outpath.format(f"{pad_type} & standardized features", group_name, f" (N={len(sub_result_df)})"), 
-            figsize=(8, 6),
-            overwrite=args.overwrite
-        )
-
-        ## Correlations between PAD values and questionnaire features:
-        plot_cormat(
-            DF=sub_result_df, 
-            targ_cols=basic_q_features, 
-            corrwith_cols=sorted(desc.feature_oris), 
-            output_path=config.pad_cormat_outpath.format(f"{pad_type} & questionnaire features", group_name, f" (N={len(sub_result_df)})"), 
-            figsize=(8, 10),
-            overwrite=args.overwrite
-        )
+        ## Correlation with questionnaire / standardized test features:
+        for y_title, y_cols, fig_size in zip(
+                ["questionnaire", "standardized test"], 
+                [basic_q_features, st_features], 
+                [(12, 11), (8, 7)]
+            ):
+            plot_cormat(
+                DF=sub_result_df, 
+                targ_cols=sorted(desc.feature_oris), 
+                corrwith_cols=y_cols, 
+                rename_ycols=True, 
+                y_title=y_title, 
+                annot_fs=18, 
+                ticks_fs=20, 
+                fig_size=fig_size, 
+                output_path=config.pad_cormat_outpath.format(f"{pad_type} & {y_title} features", group_name, f" (N={len(sub_result_df)})"),
+                overwrite=args.overwrite
+            )
 
     pad_with_interested_features = pd.concat(pad_with_interested_features)
     pad_with_interested_features.to_csv(config.pad_cormat_data_outpath, index=False)
